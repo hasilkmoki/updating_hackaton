@@ -1,0 +1,36 @@
+# Bytecode / cache
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+agents/
+.venv/
+venv/
+env/
+.env
+
+
+# IDE / editor
+.idea/
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs / coverage
+*.log
+.coverage*
+coverage.xml
+
+# Generated data and checkpoints
+storage/
+
+# Local notebooks/output
+*.ipynb_checkpoints/
+
