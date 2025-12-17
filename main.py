@@ -1,12 +1,16 @@
 """
 Main FastAPI Application
-Orchestrates the full pipeline
+Production-Grade Agentic AI System with LangGraph
 """
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import uuid
+
+# Initialize structured logging
+from config.logging import configure_logging
+configure_logging()
 
 # Import pipeline steps
 from step1_upload import upload_file
@@ -92,15 +96,41 @@ async def upload_documents(files: List[UploadFile] = File(...), entity_id: Optio
 @app.post("/process")
 async def process_documents(
     files: List[UploadFile] = File(...),
-    entity_id: Optional[str] = Form(None)
+    entity_id: Optional[str] = Form(None),
+    use_agent: bool = Form(True)  # Toggle between agent and legacy pipeline
 ):
     """
-    Full pipeline: Upload → Preprocess → Classify → Extract → Reason → Alert (supports multiple files)
+    AGENTIC PROCESSING: Full autonomous agent pipeline with LangGraph
+    - Planner → Executor → Validator → Recovery loop
+    - Full observability and tool usage tracking
+    - Automatic retry and error recovery
     """
     try:
         if not entity_id:
             entity_id = f"entity_{uuid.uuid4().hex[:8]}"
 
+        # Use agent if enabled
+        if use_agent:
+            from agent.orchestrator import orchestrator
+            
+            results = []
+            for file in files:
+                file_bytes = await file.read()
+                result = await orchestrator.process_document(
+                    file_bytes, 
+                    file.filename, 
+                    entity_id
+                )
+                results.append(result)
+            
+            return {
+                "status": "success",
+                "entity_id": entity_id,
+                "agent_mode": True,
+                "results": results
+            }
+        
+        # Legacy pipeline (for backward compatibility)
         results = []
 
         for file in files:
@@ -143,8 +173,14 @@ async def process_documents(
                 # STEP 6: Alerts Engine
                 alerts = alerts_engine.generate_alerts(risks, events, timeline, sector, file_id)
 
-                # STEP 7: Insights Engine (LLM-powered analysis)
+                # STEP 7: Store alerts in database
+                alerts_stored = core_reasoner.store_alerts(alerts, entity_id)
+
+                # STEP 8: Insights Engine (LLM-powered analysis)
                 insights = insights_engine.generate_insights(events, risks, alerts, sector, text)
+
+                # Get updated timeline for preview (last 10 events)
+                timeline_preview = core_reasoner.get_timeline(entity_id, limit=10)
 
                 results.append({
                     "status": "success",
@@ -156,13 +192,14 @@ async def process_documents(
                     "events": events,
                     "risks": risks,
                     "alerts": alerts,
+                    "timeline_preview": timeline_preview,
                     "core_reasoner": {
                         **store_result,
-                        **embed_result
+                        **embed_result,
+                        **alerts_stored
                     }
                 })
             except Exception as e:
-                # Return per-file error without failing entire batch
                 results.append({
                     "status": "error",
                     "filename": file.filename,
@@ -172,6 +209,7 @@ async def process_documents(
         return {
             "status": "success",
             "entity_id": entity_id,
+            "agent_mode": False,
             "results": results
         }
 
@@ -188,15 +226,15 @@ async def get_timeline(entity_id: str, limit: int = 100):
         "entity_id": entity_id,
         "timeline": timeline
     }
-
-
 @app.get("/alerts/{entity_id}")
-async def get_alerts(entity_id: str):
-    """Get alerts for entity (placeholder - should query from alerts DB)"""
+async def get_alerts(entity_id: str, status: str = "active", limit: int = 100):
+    """Get alerts for entity from database"""
+    alerts = core_reasoner.get_alerts(entity_id, status, limit)
     return {
         "status": "success",
         "entity_id": entity_id,
-        "alerts": []
+        "count": len(alerts),
+        "alerts": alerts
     }
 
 
@@ -212,17 +250,42 @@ async def chat(entity_id: str, chat_query: ChatQuery):
     }
 
 
+@app.get("/observability/{file_id}")
+async def get_observability(file_id: str):
+    """
+    OBSERVABILITY ENDPOINT
+    Get full agent execution trace for a file
+    Shows: steps, tools used, retries, validation, recovery actions
+    """
+    # In production, this would query from a log store
+    # For now, return structure
+    return {
+        "file_id": file_id,
+        "message": "Observability data - check execution_log in /process response",
+        "note": "Full observability is included in /process response under 'observability' key"
+    }
+
+
 @app.get("/")
 async def root():
     return {
-        "message": "Document Intelligence Pipeline API",
-        "version": "1.0.0",
+        "message": "Document Intelligence Pipeline API - Agentic AI System",
+        "version": "2.0.0",
+        "architecture": "LangGraph Agent (Planner → Executor → Validator → Recovery)",
         "endpoints": {
             "upload": "/upload",
-            "process": "/process",
+            "process": "/process (use_agent=true for agent mode)",
             "timeline": "/timeline/{entity_id}",
             "alerts": "/alerts/{entity_id}",
-            "chat": "/chat/{entity_id}"
-        }
+            "chat": "/chat/{entity_id}",
+            "observability": "/observability/{file_id}"
+        },
+        "agent_features": [
+            "Autonomous planning and execution",
+            "Tool-based processing",
+            "Automatic validation",
+            "Retry and recovery",
+            "Full observability"
+        ]
     }
 

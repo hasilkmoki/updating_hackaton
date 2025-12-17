@@ -66,6 +66,27 @@ class CoreReasoner:
             )
         """)
         
+        # Alerts table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                alert_id TEXT PRIMARY KEY,
+                entity_id TEXT,
+                title TEXT,
+                severity TEXT,
+                reason TEXT,
+                source_file TEXT,
+                evidence TEXT,
+                recommended_actions TEXT,
+                created_at TEXT,
+                status TEXT DEFAULT 'active'
+            )
+        """)
+        
+        # Create index for faster queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alerts_entity ON alerts(entity_id, status)
+        """)
+        
         conn.commit()
         conn.close()
     
@@ -276,4 +297,81 @@ class CoreReasoner:
         except Exception as e:
             print(f"Vector search error: {e}")
             return []
+    
+    def store_alerts(self, alerts: List[Dict], entity_id: str) -> dict:
+        """
+        Store alerts in database
+        
+        Returns:
+        {
+            "alerts_stored": [...]
+        }
+        """
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        stored_alert_ids = []
+        
+        for alert in alerts:
+            alert_id = alert.get("alert_id")
+            if not alert_id:
+                continue
+                
+            cursor.execute("""
+                INSERT OR REPLACE INTO alerts 
+                (alert_id, entity_id, title, severity, reason, source_file, 
+                 evidence, recommended_actions, created_at, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                alert_id,
+                entity_id,
+                alert.get("title", ""),
+                alert.get("severity", "medium"),
+                alert.get("reason", ""),
+                alert.get("source_file", ""),
+                json.dumps(alert.get("evidence", [])),
+                json.dumps(alert.get("recommended_actions", [])),
+                alert.get("created_at", datetime.now().isoformat()),
+                "active"
+            ))
+            
+            stored_alert_ids.append(alert_id)
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "alerts_stored": stored_alert_ids
+        }
+    
+    def get_alerts(self, entity_id: str, status: str = "active", limit: int = 100) -> List[Dict]:
+        """Get alerts for entity"""
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT alert_id, title, severity, reason, source_file, 
+                   evidence, recommended_actions, created_at, status
+            FROM alerts
+            WHERE entity_id = ? AND status = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (entity_id, status, limit))
+        
+        alerts = []
+        for row in cursor.fetchall():
+            alerts.append({
+                "alert_id": row[0],
+                "title": row[1],
+                "severity": row[2],
+                "reason": row[3],
+                "source_file": row[4],
+                "evidence": json.loads(row[5]) if row[5] else [],
+                "recommended_actions": json.loads(row[6]) if row[6] else [],
+                "created_at": row[7],
+                "status": row[8]
+            })
+        
+        conn.close()
+        return alerts
 

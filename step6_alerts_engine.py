@@ -68,15 +68,31 @@ class AlertsEngine:
         evidence = []
         event_ids = risk.get("event_ids", [])
         
-        for event in events:
-            if event.get("event_id") in event_ids:
+        # If specific event_ids provided, use those
+        if event_ids:
+            for event in events:
+                if event.get("event_id") in event_ids:
+                    provenance = event.get("provenance", [])
+                    for prov in provenance:
+                        evidence.append({
+                            "file_id": prov.get("file_id"),
+                            "snippet": prov.get("snippet", ""),
+                            "page": prov.get("page")
+                        })
+        else:
+            # If no event_ids, use all events as evidence (for risks like "missing follow-up")
+            # This helps show context even when risk doesn't link to specific events
+            for event in events[:5]:  # Limit to first 5 events to avoid too much data
                 provenance = event.get("provenance", [])
-                for prov in provenance:
-                    evidence.append({
-                        "file_id": prov.get("file_id"),
-                        "snippet": prov.get("snippet", ""),
-                        "page": prov.get("page")
-                    })
+                if provenance:
+                    for prov in provenance[:1]:  # Take first provenance entry
+                        evidence.append({
+                            "file_id": prov.get("file_id"),
+                            "snippet": prov.get("snippet", "")[:300],  # Limit snippet length
+                            "page": prov.get("page"),
+                            "event_type": event.get("type", "unknown")
+                        })
+                        break  # Only one evidence per event
         
         return evidence
     
