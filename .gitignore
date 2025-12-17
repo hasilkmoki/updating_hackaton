@@ -12,6 +12,7 @@ agents/
 venv/
 env/
 .env
+.env.example
 
 
 # IDE / editor
